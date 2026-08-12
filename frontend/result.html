@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>智能诊股 · 技术面诊断报告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- ECharts CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f0f4f9; }
+        .gradient-primary { background: linear-gradient(145deg, #0b1a33 0%, #1a2f4e 100%); }
+        .gradient-gold { background: linear-gradient(135deg, #d4a843 0%, #f5d77b 100%); }
+        .text-gold { color: #d4a843; }
+        .shadow-soft { box-shadow: 0 20px 40px -12px rgba(11, 26, 51, 0.15); }
+        .shadow-card { box-shadow: 0 4px 20px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.02); }
+        .health-score { font-size: 3rem; font-weight: 800; line-height: 1; }
+        .health-score.green { color: #10b981; }
+        .health-score.yellow { color: #f59e0b; }
+        .health-score.red { color: #ef4444; }
+        .health-bg-green { background: #d1fae5; border-color: #34d399; }
+        .health-bg-yellow { background: #fef3c7; border-color: #fbbf24; }
+        .health-bg-red { background: #fee2e2; border-color: #f87171; }
+        .animate-fade-up { animation: fadeUp 0.4s ease-out both; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .meter-bar { height: 6px; border-radius: 999px; background: #e5e7eb; overflow: hidden; }
+        .meter-bar .fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+        .bias-card { border-left: 4px solid; border-radius: 0.75rem; }
+        .bias-card.bullish { border-left-color: #10b981; background: #f0fdf4; }
+        .bias-card.bearish { border-left-color: #ef4444; background: #fef2f2; }
+        .bias-card.neutral { border-left-color: #f59e0b; background: #fffbeb; }
+        .history-tag {
+            background: rgba(255,255,255,0.15); color: #e0e7ff;
+            padding: 0.2rem 0.8rem; border-radius: 999px; font-size: 0.7rem;
+            cursor: pointer; transition: all 0.2s;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .history-tag:hover { background: rgba(255,255,255,0.25); color: white; }
+        .history-tag.active { background: white; color: #0b1a33; border-color: white; }
+        #chart-container { width: 100%; height: 400px; }
+        @media (max-width: 640px) { #chart-container { height: 300px; } }
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 12px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 18px;
+            height: 4px;
+            border-radius: 2px;
+        }
+        .legend-color.candle-up { height: 12px; background: #ef5350; border-radius: 2px; }
+        .legend-color.candle-down { height: 12px; background: #26a69a; border-radius: 2px; }
+        .legend-color.ma5 { background: #f39c12; }
+        .legend-color.ma10 { background: #8e44ad; }
+        .legend-color.ma20 { background: #2980b9; }
+        .legend-color.support { border-bottom: 2px dashed #2ecc71; height: 2px; width: 18px; background: transparent; }
+        .legend-color.resistance { border-bottom: 2px dashed #e67e22; height: 2px; width: 18px; background: transparent; }
+    </style>
+</head>
+<body>
+<div id="app" class="max-w-5xl mx-auto px-4 py-4 md:py-8 min-h-screen flex flex-col">
+
+    <!-- 顶部导航 -->
+    <header class="gradient-primary rounded-2xl p-4 md:p-6 shadow-soft mb-6 md:mb-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 md:w-12 md:h-12 gradient-gold rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-chart-line text-white text-lg md:text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-white text-xl md:text-2xl font-extrabold tracking-tight leading-tight">
+                        智诊股 <span class="text-gold text-sm font-medium ml-2">· 技术面</span>
+                    </h1>
+                    <p class="text-blue-200/70 text-xs md:text-sm font-light tracking-wide">AI 驱动 · 多维度技术诊断</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5 max-w-xs justify-end">
+                <span class="text-blue-200/50 text-[10px] mr-1">📋 历史：</span>
+                <span v-for="(item, idx) in searchHistory" :key="idx"
+                      class="history-tag" :class="{ 'active': currentSample && currentSample.code === item.code }"
+                      @click="selectHistory(item)">
+                    {{ item.stock }}
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主体报告（诊断卡片） -->
+    <div class="flex-1">
+        <div v-if="currentSample" class="animate-fade-up space-y-4">
+
+            <!-- 健康度卡片 -->
+            <div class="rounded-2xl p-4 md:p-5 border-2 flex items-center gap-4 md:gap-6"
+                 :class="{
+                     'health-bg-green border-emerald-300': currentSample.health >= 80,
+                     'health-bg-yellow border-amber-300': currentSample.health >= 60 && currentSample.health < 80,
+                     'health-bg-red border-red-300': currentSample.health < 60
+                 }">
+                <div class="flex-1">
+                    <div class="text-sm font-semibold text-gray-700">综合健康度</div>
+                    <div class="text-xs text-gray-500">基于技术面多维度评分</div>
+                </div>
+                <div class="text-right">
+                    <span class="health-score" :class="{
+                        'green': currentSample.health >= 80,
+                        'yellow': currentSample.health >= 60 && currentSample.health < 80,
+                        'red': currentSample.health < 60
+                    }">{{ currentSample.health }}</span>
+                    <span class="text-sm font-medium text-gray-500">/100</span>
+                </div>
+            </div>
+
+            <!-- 详细报告 -->
+            <div class="bg-white rounded-2xl shadow-card p-4 md:p-5 border border-gray-100/80">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3 mb-3">
+                    <div>
+                        <div class="flex items-center gap-2.5 flex-wrap">
+                            <h2 class="text-lg md:text-xl font-extrabold text-gray-800">{{ currentSample.stock }}</h2>
+                            <span class="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{{ currentSample.code }}</span>
+                            <span class="text-xs font-medium px-2.5 py-0.5 rounded-full"
+                                  :class="currentSample.trend === 'up' ? 'bg-emerald-100 text-emerald-700' : currentSample.trend === 'down' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                                <i class="fas" :class="currentSample.trend === 'up' ? 'fa-arrow-up' : currentSample.trend === 'down' ? 'fa-arrow-down' : 'fa-minus'"></i>
+                                {{ currentSample.trendLabel }}
+                            </span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            <i class="far fa-clock mr-1"></i> {{ currentSample.updateTime }}
+                            <span class="mx-1.5">·</span>
+                            <i class="fas fa-chart-bar mr-1"></i> 日线
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 mt-1 flex-wrap">
+                    <span class="text-xs text-gray-500">当前价 <strong class="text-gray-800">{{ currentSample.price }}</strong></span>
+                    <span class="text-xs text-gray-500">涨跌幅 <strong :class="currentSample.change >= 0 ? 'text-emerald-600' : 'text-red-600'">{{ currentSample.change }}</strong></span>
+                    <span class="text-xs text-gray-500">成交量 <strong class="text-gray-800">{{ currentSample.volume }}</strong></span>
+                </div>
+            </div>
+
+            <!-- 核心指标网格 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-candlestick-chart text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">K 线形态</h3>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-sm font-semibold text-gray-800">{{ currentSample.pattern }}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full"
+                              :class="currentSample.patternSignal === 'bullish' ? 'bg-emerald-100 text-emerald-700' : currentSample.patternSignal === 'bearish' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                            {{ currentSample.patternSignalLabel }}
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">{{ currentSample.patternDesc }}</p>
+                </div>
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-chart-simple text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">均线系统</h3>
+                    </div>
+                    <div class="flex flex-wrap gap-2.5">
+                        <span class="text-xs bg-white px-2.5 py-1 rounded-lg border border-gray-200">MA5 <strong class="text-gray-800">{{ currentSample.ma5 }}</strong></span>
+                        <span class="text-xs bg-white px-2.5 py-1 rounded-lg border border-gray-200">MA10 <strong class="text-gray-800">{{ currentSample.ma10 }}</strong></span>
+                        <span class="text-xs bg-white px-2.5 py-1 rounded-lg border border-gray-200">MA20 <strong class="text-gray-800">{{ currentSample.ma20 }}</strong></span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">{{ currentSample.maDesc }}</p>
+                </div>
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-water text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">成交量</h3>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-sm font-semibold text-gray-800">{{ currentSample.volumeStatus }}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full"
+                              :class="currentSample.volumeSignal === 'bullish' ? 'bg-emerald-100 text-emerald-700' : currentSample.volumeSignal === 'bearish' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                            {{ currentSample.volumeSignalLabel }}
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1.5 leading-relaxed">{{ currentSample.volumeDesc }}</p>
+                </div>
+            </div>
+
+            <!-- 赚钱效应、市场热度、买卖力量 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-coins text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">赚钱效应</h3>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-2xl font-bold" :class="currentSample.profitability >= 70 ? 'text-emerald-600' : currentSample.profitability >= 40 ? 'text-amber-500' : 'text-red-500'">
+                            {{ currentSample.profitability }}%
+                        </span>
+                        <span class="text-xs text-gray-400">{{ currentSample.profitabilityLabel }}</span>
+                    </div>
+                    <div class="meter-bar mt-1">
+                        <div class="fill" :class="currentSample.profitability >= 70 ? 'bg-emerald-500' : currentSample.profitability >= 40 ? 'bg-amber-500' : 'bg-red-500'"
+                             :style="{ width: currentSample.profitability + '%' }"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">{{ currentSample.profitabilityDesc }}</p>
+                </div>
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-fire text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">市场热度</h3>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-2xl font-bold" :class="currentSample.marketHeat >= 70 ? 'text-emerald-600' : currentSample.marketHeat >= 40 ? 'text-amber-500' : 'text-red-500'">
+                            {{ currentSample.marketHeat }}%
+                        </span>
+                        <span class="text-xs text-gray-400">{{ currentSample.heatLabel }}</span>
+                    </div>
+                    <div class="meter-bar mt-1">
+                        <div class="fill" :class="currentSample.marketHeat >= 70 ? 'bg-emerald-500' : currentSample.marketHeat >= 40 ? 'bg-amber-500' : 'bg-red-500'"
+                             :style="{ width: currentSample.marketHeat + '%' }"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">{{ currentSample.heatDesc }}</p>
+                </div>
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-scale-balanced text-gold text-sm"></i>
+                        <h3 class="text-sm font-bold text-gray-700">买卖力量</h3>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-bold text-gray-800">{{ currentSample.powerBalance }}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full"
+                              :class="currentSample.powerSignal === 'bullish' ? 'bg-emerald-100 text-emerald-700' : currentSample.powerSignal === 'bearish' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                            {{ currentSample.powerLabel }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>卖方</span>
+                        <span>买方</span>
+                    </div>
+                    <div class="meter-bar mt-0.5">
+                        <div class="fill bg-blue-500" :style="{ width: currentSample.buyRatio + '%' }"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">{{ currentSample.powerDesc }}</p>
+                </div>
+            </div>
+
+            <!-- 安全地板价 & 解套天花板 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-medium text-gray-500">安全地板价</h4>
+                        <p class="text-xl font-bold text-emerald-600">{{ currentSample.floorPrice }}</p>
+                        <p class="text-xs text-gray-400">{{ currentSample.floorDesc }}</p>
+                    </div>
+                </div>
+                <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-medium text-gray-500">解套天花板</h4>
+                        <p class="text-xl font-bold text-amber-600">{{ currentSample.ceilingPrice }}</p>
+                        <p class="text-xs text-gray-400">{{ currentSample.ceilingDesc }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 形态科普 -->
+            <div class="bg-blue-50/70 rounded-xl p-4 border border-blue-100/60">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-graduation-cap"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-800">📖 形态科普</h4>
+                        <p class="text-xs text-gray-600 leading-relaxed mt-0.5">{{ currentSample.patternScience }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 买卖倾向参考 -->
+            <div class="bg-gray-50/80 rounded-xl p-4 border border-gray-100/60">
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fas fa-bullseye text-gold text-sm"></i>
+                    <h3 class="text-sm font-bold text-gray-700">买卖倾向参考与观察点</h3>
+                </div>
+                <div class="space-y-3">
+                    <div v-for="(item, idx) in currentSample.tradeBiasItems" :key="idx"
+                         class="bias-card p-3 rounded-lg"
+                         :class="item.direction === 'bullish' ? 'bullish' : item.direction === 'bearish' ? 'bearish' : 'neutral'">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-semibold" :class="item.direction === 'bullish' ? 'text-emerald-700' : item.direction === 'bearish' ? 'text-red-700' : 'text-amber-700'">
+                                {{ item.direction === 'bullish' ? '🟢 倾向偏多' : item.direction === 'bearish' ? '🔴 倾向偏空' : '🟡 中性' }}
+                            </span>
+                            <span class="text-xs font-medium text-gray-500">· {{ item.title }}</span>
+                        </div>
+                        <div class="mt-1 text-xs text-gray-600"><span class="font-medium">关注维度：</span>{{ item.dimension }}</div>
+                        <div class="mt-0.5 text-xs text-gray-700"><span class="font-medium">形态/位置：</span>{{ item.condition }}</div>
+                        <div class="mt-1 text-xs text-gray-500 leading-relaxed"><span class="font-medium">参考理由：</span>{{ item.reason }}</div>
+                    </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-600 border-t border-gray-200 pt-2">
+                    <span class="font-medium">📌 综合观察：</span>{{ currentSample.tradeBias }}
+                </div>
+            </div>
+
+            <!-- 适合小白的操作思考 -->
+            <div class="bg-purple-50/70 rounded-xl p-4 border border-purple-100/60">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-lightbulb"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-800">💡 适合小白的操作思考</h4>
+                        <p class="text-xs text-gray-600 leading-relaxed mt-0.5">{{ currentSample.beginnerAdvice }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- K线图卡片（已修复标签显示问题） -->
+            <div class="bg-white rounded-2xl shadow-card p-4 border border-gray-100/80">
+                <h3 class="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <i class="fas fa-chart-line text-gold"></i> 日线K线图（ECharts）
+                    <span class="text-xs text-gray-400 font-normal">（近60个交易日）</span>
+                </h3>
+                <div id="chart-container" style="width:100%; height:400px;"></div>
+                <!-- 图例解释 -->
+                <div class="mt-3 flex flex-wrap gap-3 text-xs text-gray-600 border-t border-gray-100 pt-3">
+                    <span class="legend-item"><span class="legend-color candle-up"></span> 涨（红）</span>
+                    <span class="legend-item"><span class="legend-color candle-down"></span> 跌（绿）</span>
+                    <span class="legend-item"><span class="legend-color ma5"></span> MA5</span>
+                    <span class="legend-item"><span class="legend-color ma10"></span> MA10</span>
+                    <span class="legend-item"><span class="legend-color ma20"></span> MA20</span>
+                    <span class="legend-item"><span class="legend-color support"></span> 支撑位</span>
+                    <span class="legend-item"><span class="legend-color resistance"></span> 阻力位</span>
+                    <span class="text-gray-400">💡 悬停查看详情 · 滚轮缩放</span>
+                </div>
+            </div>
+
+            <!-- 一句话总结 -->
+            <div class="gradient-primary rounded-xl p-4 border border-white/10">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 gradient-gold rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-flag-checkered text-white text-xs"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-white text-sm font-bold">📌 一句话总结</h4>
+                        <div class="text-blue-100/80 text-xs leading-relaxed mt-0.5" v-html="currentSample.summary"></div>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span v-for="tag in currentSample.tags" :key="tag" class="text-[10px] bg-white/10 text-blue-200/80 px-2.5 py-0.5 rounded-full border border-white/5">
+                                {{ tag }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 底部提示 -->
+    <div class="mt-6 text-center text-xs text-gray-400 border-t border-gray-200/50 pt-4">
+        <span>诊断结果基于技术面指标模拟生成，仅供参考，不构成投资建议。</span>
+    </div>
+</div>
+
+<!-- 底部页脚 -->
+<footer class="mt-8 pt-4 border-t border-gray-200/50 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-400">
+    <div class="flex items-center gap-4">
+        <span>© 2026 智诊股 · 技术面分析</span>
+        <span class="hidden sm:inline">|</span>
+        <span class="hidden sm:inline">数据模拟演示，不构成投资建议</span>
+    </div>
+    <div class="flex items-center gap-3">
+        <a href="#" class="hover:text-gold transition-colors"><i class="fab fa-github"></i></a>
+    </div>
+</footer>
+
+<script>
+const { createApp } = Vue;
+createApp({
+    data() {
+        return {
+            currentSample: null,
+            searchHistory: [],
+            chartInstance: null,
+            _resizeHandler: null,
+        };
+    },
+    mounted() {
+        const stored = sessionStorage.getItem('diagnosisResult');
+        if (stored) {
+            try {
+                const data = JSON.parse(stored);
+                this.currentSample = data;
+                this.searchHistory = [data];
+                this.$nextTick(() => {
+                    setTimeout(() => {
+                        this.renderChart(data);
+                    }, 300);
+                });
+            } catch (e) {
+                alert('数据解析失败，请重新诊断');
+                window.location.href = 'input.html';
+            }
+        } else {
+            window.location.href = 'input.html';
+        }
+    },
+    beforeDestroy() {
+        if (this.chartInstance) {
+            this.chartInstance.dispose();
+            this.chartInstance = null;
+        }
+        if (this._resizeHandler) {
+            window.removeEventListener('resize', this._resizeHandler);
+            this._resizeHandler = null;
+        }
+    },
+    methods: {
+        selectHistory(item) {
+            this.currentSample = item;
+            this.$nextTick(() => {
+                if (this.chartInstance) {
+                    this.chartInstance.dispose();
+                    this.chartInstance = null;
+                }
+                setTimeout(() => {
+                    this.renderChart(item);
+                }, 300);
+            });
+        },
+        renderChart(data) {
+            const container = document.getElementById('chart-container');
+            if (!container) {
+                console.error('未找到图表容器');
+                return;
+            }
+            if (typeof echarts === 'undefined') {
+                container.innerHTML = '<p class="text-red-500 text-sm text-center py-8">ECharts 库加载失败，请刷新</p>';
+                return;
+            }
+            if (!data || !data.ohlc || data.ohlc.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">暂无K线数据</p>';
+                return;
+            }
+
+            // 校验并转换数据
+            const rawData = [];
+            const dates = [];
+            let hasInvalid = false;
+            data.ohlc.forEach(item => {
+                const open = parseFloat(item.open);
+                const close = parseFloat(item.close);
+                const low = parseFloat(item.low);
+                const high = parseFloat(item.high);
+                if (!isNaN(open) && !isNaN(close) && !isNaN(low) && !isNaN(high)) {
+                    rawData.push([open, close, low, high]);
+                    dates.push(item.time);
+                } else {
+                    hasInvalid = true;
+                }
+            });
+            if (rawData.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">数据无效，无法绘制K线</p>';
+                return;
+            }
+            if (hasInvalid) {
+                console.warn('部分OHLC数据无效，已忽略');
+            }
+
+            // 计算均线
+            const closePrices = rawData.map(d => d[1]);
+            const ma5 = this.calcMA(closePrices, 5);
+            const ma10 = this.calcMA(closePrices, 10);
+            const ma20 = this.calcMA(closePrices, 20);
+
+            // 初始化图表
+            const chart = echarts.init(container, 'light');
+            this.chartInstance = chart;
+
+            // 配置项（优化 grid 边距和 markLine 标签）
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'cross' },
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    borderColor: '#ccc',
+                    borderWidth: 1,
+                    formatter: function(params) {
+                        let res = `<strong>${params[0].axisValue}</strong><br/>`;
+                        const values = params[0].data;
+                        if (values && values.length === 4) {
+                            res += `开盘: ${values[0]}<br/>收盘: ${values[1]}<br/>最低: ${values[2]}<br/>最高: ${values[3]}`;
+                        }
+                        params.slice(1).forEach(p => {
+                            if (p.seriesName && p.data !== null && p.data !== undefined) {
+                                res += `<br/>${p.seriesName}: ${p.data}`;
+                            }
+                        });
+                        return res;
+                    }
+                },
+                grid: {
+                    left: '6%',
+                    right: '8%',   // 增加右侧空间，避免标签被截断
+                    bottom: '15%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLine: { lineStyle: { color: '#ccc' } },
+                    splitLine: { show: false },
+                    axisLabel: { rotate: 30, interval: Math.floor(dates.length / 10) }
+                },
+                yAxis: {
+                    scale: true,
+                    splitLine: { show: true, lineStyle: { color: '#f0f0f0' } },
+                    axisLine: { lineStyle: { color: '#ccc' } }
+                },
+                series: [
+                    {
+                        name: 'K线',
+                        type: 'candlestick',
+                        data: rawData,
+                        itemStyle: {
+                            color: '#ef5350',
+                            color0: '#26a69a',
+                            borderColor: '#ef5350',
+                            borderColor0: '#26a69a'
+                        },
+                        markLine: {
+                            silent: true,
+                            data: [],
+                            label: {
+                                formatter: function(params) {
+                                    // 显式保留完整数值，不截断
+                                    return '支撑 ' + params.value;
+                                },
+                                color: '#333',
+                                fontSize: 12,
+                                fontWeight: 'bold',
+                                backgroundColor: 'rgba(255,255,255,0.85)',
+                                padding: [4, 8],
+                                borderRadius: 4,
+                                position: 'insideEndTop' // 显示在端点上方，避免被边界裁剪
+                            }
+                        }
+                    },
+                    {
+                        name: 'MA5',
+                        type: 'line',
+                        data: ma5,
+                        smooth: true,
+                        lineStyle: { width: 2, color: '#f39c12' },
+                        symbol: 'none'
+                    },
+                    {
+                        name: 'MA10',
+                        type: 'line',
+                        data: ma10,
+                        smooth: true,
+                        lineStyle: { width: 2, color: '#8e44ad' },
+                        symbol: 'none'
+                    },
+                    {
+                        name: 'MA20',
+                        type: 'line',
+                        data: ma20,
+                        smooth: true,
+                        lineStyle: { width: 2, color: '#2980b9' },
+                        symbol: 'none'
+                    }
+                ]
+            };
+
+            // 添加支撑/阻力线（markLine）
+            const floor = parseFloat(data.floorPrice);
+            const ceiling = parseFloat(data.ceilingPrice);
+            const markLines = [];
+            if (!isNaN(floor) && floor > 0) {
+                markLines.push({
+                    yAxis: floor,
+                    label: {
+                        formatter: '支撑 ' + floor,
+                        color: '#2ecc71',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        backgroundColor: 'rgba(255,255,255,0.85)',
+                        padding: [4, 8],
+                        borderRadius: 4,
+                        position: 'insideEndTop'
+                    },
+                    lineStyle: { color: '#2ecc71', type: 'dashed', width: 1.5 }
+                });
+            }
+            if (!isNaN(ceiling) && ceiling > 0) {
+                markLines.push({
+                    yAxis: ceiling,
+                    label: {
+                        formatter: '阻力 ' + ceiling,
+                        color: '#e67e22',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        backgroundColor: 'rgba(255,255,255,0.85)',
+                        padding: [4, 8],
+                        borderRadius: 4,
+                        position: 'insideEndTop'
+                    },
+                    lineStyle: { color: '#e67e22', type: 'dashed', width: 1.5 }
+                });
+            }
+            if (markLines.length > 0) {
+                option.series[0].markLine.data = markLines;
+            }
+
+            chart.setOption(option);
+
+            // 自适应
+            const resizeHandler = () => { chart.resize(); };
+            window.addEventListener('resize', resizeHandler);
+            this._resizeHandler = resizeHandler;
+        },
+        calcMA(data, period) {
+            const result = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    result.push(null);
+                } else {
+                    let sum = 0;
+                    for (let j = i - period + 1; j <= i; j++) sum += data[j];
+                    result.push(+(sum / period).toFixed(2));
+                }
+            }
+            return result;
+        }
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

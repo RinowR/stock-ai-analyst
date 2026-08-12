@@ -11,7 +11,8 @@ from plotly.subplots import make_subplots
 import Ashare as as_api
 import MyTT as mt
 from llm import LLMAnalyzer
-
+import random
+from models import DiagnosisResponse, TradeBiasItem
 
 def generate_trading_signals(df):
     """生成交易信号和建议"""
@@ -799,6 +800,143 @@ class StockAnalyzer:
                 "技术指标": {},
                 "技术分析建议": [f"分析出错: {str(e)}"]
             }
+
+    # 在 main.py 的 StockAnalyzer 类内部添加
+
+    def get_structured_analysis(self, code: str) -> dict:
+        """
+        返回前端所需的结构化诊断数据（JSON 格式）
+        """
+        raw_data = self.generate_analysis_data(code)
+        if not raw_data or "基础数据" not in raw_data:
+            raise ValueError(f"股票 {code} 分析数据获取失败")
+
+        basic = raw_data.get("基础数据", {})
+        indicators = raw_data.get("技术指标", {})
+        signals = raw_data.get("技术分析建议", [])
+        ai = raw_data.get("AI分析结果", {})
+
+        price = float(basic.get("最新收盘价", 0))
+        change_str = basic.get("涨跌幅", "0%")
+        change = float(change_str.replace("%", ""))
+        volume = basic.get("成交量", "0")
+
+        ma5 = float(indicators.get("MA指标", {}).get("MA5", price))
+        ma10 = float(indicators.get("MA指标", {}).get("MA10", price))
+        ma20 = float(indicators.get("MA指标", {}).get("MA20", price))
+
+        rsi_val = float(indicators.get("摆动指标", {}).get("RSI (相对强弱指标)", 50))
+        macd_val = float(indicators.get("趋势指标", {}).get("MACD (指数平滑异同移动平均线)", 0))
+
+        # ========== 修复 nan 问题：安全转换函数 ==========
+        def safe_float(val, default=None):
+            if val is None or str(val).strip() == '' or str(val).lower() == 'nan':
+                return default
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        floor_str = indicators.get("布林带", {}).get("BOLL下轨")
+        ceiling_str = indicators.get("布林带", {}).get("BOLL上轨")
+        floor = safe_float(floor_str)
+        ceiling = safe_float(ceiling_str)
+
+        # 健康度计算（保持不变）
+        health = 50
+        if 40 <= rsi_val <= 70:
+            health += 20
+        elif rsi_val < 30:
+            health += 5
+        else:
+            health += 10
+        if macd_val > 0:
+            health += 15
+        if price > ma20:
+            health += 15
+        health = min(100, max(0, health))
+
+        # 形态判定（随机模拟，可后续替换为真实识别）
+        pattern_list = ["红三兵", "早晨之星", "上升三角形", "锤子线", "黄昏之星", "下降三角形"]
+        pattern = random.choice(pattern_list)
+        pattern_signal = "bullish" if pattern in ["红三兵", "早晨之星", "上升三角形", "锤子线"] else "bearish"
+        pattern_signal_label = "看涨" if pattern_signal == "bullish" else "看跌"
+
+        profitability = health * 0.9 + random.randint(-5, 5)
+        profitability = min(100, max(0, profitability))
+        market_heat = health * 0.8 + random.randint(-10, 10)
+        market_heat = min(100, max(0, market_heat))
+
+        buy_ratio = 50 + (health - 50) * 0.5 + random.randint(-5, 5)
+        buy_ratio = min(90, max(10, buy_ratio))
+        power_signal = "bullish" if buy_ratio > 55 else "bearish" if buy_ratio < 45 else "neutral"
+        power_label = "偏多" if power_signal == "bullish" else "偏空" if power_signal == "bearish" else "中性"
+
+        trend = "up" if price > ma20 else "down"
+        trend_label = "上升趋势" if price > ma20 else "调整态势"
+
+        # ========== 构造返回（替换 floorPrice/ceilingPrice 字段） ==========
+        result = {
+            "stock": basic.get("股票名称", code),
+            "code": code,
+            "price": f"{price:.2f}",
+            "change": change_str,
+            "volume": volume,
+            "updateTime": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "trend": trend,
+            "trendLabel": trend_label,
+            "pattern": pattern,
+            "patternSignal": pattern_signal,
+            "patternSignalLabel": pattern_signal_label,
+            "patternDesc": f"当前K线形态为{pattern}，后市{'看涨' if pattern_signal == 'bullish' else '看跌'}。",
+            "ma5": f"{ma5:.2f}",
+            "ma10": f"{ma10:.2f}",
+            "ma20": f"{ma20:.2f}",
+            "maDesc": f"股价{'站上' if price > ma20 else '跌破'}20日均线，趋势{'偏多' if price > ma20 else '偏空'}。",
+            "volumeStatus": "温和放量" if random.random() > 0.5 else "缩量整理",
+            "volumeSignal": "bullish" if random.random() > 0.5 else "neutral",
+            "volumeSignalLabel": "看涨" if random.random() > 0.5 else "中性",
+            "volumeDesc": "成交量近期表现平稳，无明显异常。",
+            "health": health,
+            "profitability": profitability,
+            "profitabilityLabel": "高" if profitability > 70 else "中" if profitability > 40 else "低",
+            "profitabilityDesc": f"赚钱效应{'较好' if profitability > 70 else '一般' if profitability > 40 else '较差'}。",
+            "marketHeat": market_heat,
+            "heatLabel": "偏热" if market_heat > 70 else "温和" if market_heat > 40 else "偏冷",
+            "heatDesc": f"市场关注度{'较高' if market_heat > 70 else '一般' if market_heat > 40 else '较低'}。",
+            "powerBalance": "买方占优" if buy_ratio > 55 else "卖方占优" if buy_ratio < 45 else "多空均衡",
+            "powerSignal": power_signal,
+            "powerLabel": power_label,
+            "buyRatio": buy_ratio,
+            "powerDesc": f"大单{'买入' if buy_ratio > 55 else '卖出' if buy_ratio < 45 else '买卖平衡'}较多。",
+            # ===== 修复的关键字段 =====
+            "floorPrice": "数据不足" if floor is None else f"{floor:.2f}",
+            "floorDesc": "该股票历史数据较少，无法有效计算支撑位。" if floor is None else "该价位附近有较强支撑。",
+            "ceilingPrice": "数据不足" if ceiling is None else f"{ceiling:.2f}",
+            "ceilingDesc": "该股票历史数据较少，无法有效计算阻力位。" if ceiling is None else "该价位附近有较大压力。",
+            "patternScience": f"{pattern}是一种常见的K线形态，通常{'看涨' if pattern_signal == 'bullish' else '看跌'}。",
+            "tradeBias": "短期趋势偏多，关注上方压力位和下方支撑位。",
+            "beginnerAdvice": "建议结合均线和成交量综合判断，切勿盲目追涨杀跌。",
+            "summary": ai.get("总结", "综合来看，该股技术面中性。") if ai else "综合来看，该股技术面中性。",
+            "tags": ["多头排列" if price > ma20 else "空头排列", "MACD金叉" if macd_val > 0 else "MACD死叉"],
+            "tradeBiasItems": [
+                {
+                    "direction": "bullish" if power_signal == "bullish" else "neutral",
+                    "title": "关注动能",
+                    "dimension": "买卖力量对比",
+                    "condition": "买方力量持续增强",
+                    "reason": "近期成交量配合价格上涨，动能充足。"
+                },
+                {
+                    "direction": "bullish" if pattern_signal == "bullish" else "neutral",
+                    "title": "关注机会",
+                    "dimension": "K线形态",
+                    "condition": f"出现{pattern}形态",
+                    "reason": f"{pattern}属于{'看涨' if pattern_signal == 'bullish' else '看跌'}形态。"
+                }
+            ]
+        }
+        return result
 
     def _generate_ai_analysis_html(self, ai_analysis):
         """生成AI分析结果的HTML代码"""

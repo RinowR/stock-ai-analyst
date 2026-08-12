@@ -147,7 +147,9 @@ RSI指标
 关键价位
 市场变化
 
+指令：在"总体总结"中，请用最简单、通俗的白话（像跟朋友聊天一样）说明当前股票的整体情况，避免使用专业术语，让完全没有炒股经验的人也能听懂。
 最后给出总体总结。
+【特别要求】总体总结必须用口语化的白话，类似“现在这只票处于什么状态，该不该买，要注意什么”，让刚入门的散户也能理解。
 
 """
 
@@ -488,3 +490,47 @@ class LLMAnalyzer:
             import traceback
             traceback.print_exc()
             return format_analysis_result({})
+
+
+    def recognize_stock_from_image(self, image_bytes: bytes) -> Optional[str]:
+        """
+        使用多模态大模型识别图片中的股票名称或代码
+        Args:
+            image_bytes: 图片的二进制数据
+        Returns:
+            识别出的股票名称（如"贵州茅台"）或 None
+        """
+        try:
+            import base64
+            # 将图片转为 base64
+            base64_image = base64.b64encode(image_bytes).decode('utf-8')
+
+            # 构造多模态消息（OpenAI 格式）
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "请识别这张图片中的股票名称或代码，只输出股票名称或代码，不要其他解释。如果无法识别，请输出'无法识别'。"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ]
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0,
+                max_tokens=20
+            )
+            result = response.choices[0].message.content.strip()
+            # 清理多余字符
+            result = result.replace('"', '').replace("'", "").strip()
+            if result and result != "无法识别":
+                print(f"🧠 多模态识别结果: {result}")
+                return result
+            else:
+                print("⚠️ 模型无法识别图片中的股票信息")
+                return None
+        except Exception as e:
+            print(f"❌ 多模态识别失败: {e}")
+            return None
