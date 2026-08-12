@@ -1,119 +1,120 @@
-# Ashare-LLM-Analyst
+# 智诊股 · 技术面智能诊断工具
 
-一个基于Python的A股智能分析工具，结合大语言模型提供数据驱动的投资建议和市场洞察。
+基于 [Ashare-LLM-Analyst](https://github.com/Ogannesson/ashare-llm-analyst) 改造，面向普通投资者的 AI 个股技术面诊断工具。
 
 ## 项目简介
 
-Ashare-LLM-Analyst 是一个A股市场的技术分析工具，通过[Ashare](https://github.com/mpquant/Ashare)采集股票历史数据，[MyTT](https://github.com/mpquant/MyTT)计算常见技术指标（如MACD、KDJ、RSI等），并利用大语言模型（Deepseek）生成可读性强的投资建议和市场分析。
+**智诊股**是一款专为普通投资者设计的**技术面快速诊断工具**。它解决了传统 K 线图分析繁琐、专业术语难懂的问题，让用户在输入股票代码或上传 K 线图后，**一键获得清晰易懂的技术面诊断报告**。
 
-该工具能够自动生成完整的HTML分析报告，包括基础数据分析、技术指标计算、趋势判断、支撑/阻力位识别以及AI辅助的专业投资建议。
+本项目基于 [Ashare-LLM-Analyst]进行了改造，从**脚本式静态报告生成**升级为**交互式 Web 服务**，并增加了**多模态图片识别**、**交互式 K 线图**、**小白式语言生成**等新功能，大幅提升了易用性和实用性。
 
-## 在线预览
 
-您可以访问 [此处](https://ala.oganneson.com) 查看分析报告的示例效果。
+## 核心功能
 
-## 主要功能
+多模式输入
+支持股票代码、中文名称、模糊搜索，以及上传 K 线截图自动识别股票名称（通过多模态大模型）。
 
-- 自动获取A股历史交易数据
-- 计算超过25种技术指标（MA、MACD、KDJ、RSI、BOLL等）
-- 生成详细的技术分析图表
-- 使用Deepseek大语言模型提供专业的投资分析和建议
-- 输出美观的HTML格式分析报告
+智能技术分析
+自动计算 MA、MACD、KDJ、RSI、BOLL、DMI、VR、ROC 等 25 种以上技术指标。
 
-## 使用方法
+K 线形态识别
+识别红三兵、黄昏之星、早晨之星、上升三角形等常见形态。
 
-### 前置准备
+白话诊断报告
+大模型生成技术分析、走势研判、投资建议、风险提示，并用小白也能听懂的语言总结。
 
-1. 确保安装了所有必需的依赖项:
-```bash
-pip install pandas numpy matplotlib pytz
-```
+交互式 K 线图
+基于 ECharts 绘制近 60 个交易日日线图，叠加 MA5/MA10/MA20 均线，并标注支撑位和阻力位。
 
-2. 配置大语言模型API信息（两种方式）： 方式一：使用环境变量（推荐）
-```bash
-# Linux/Mac
-export LLM_API_KEY="your_api_key_here"
-export LLM_BASE_URL="https://api.deepseek.com"  # 或其他LLM服务提供商的API地址
-export LLM_MODEL="deepseek-chat"  # 使用的模型名称
-
-# Windows (命令提示符)
-set LLM_API_KEY=your_api_key_here
-set LLM_BASE_URL=https://api.deepseek.com
-set LLM_MODEL=deepseek-chat
-
-# Windows (PowerShell)
-$env:LLM_API_KEY="your_api_key_here"
-$env:LLM_BASE_URL="https://api.deepseek.com"
-$env:LLM_MODEL="deepseek-chat"
-```
-方式二：直接在代码中设置
-```python
-analyzer = StockAnalyzer(
-    stock_info, 
-    llm_api_key="your_api_key_here",
-    llm_base_url="https://api.deepseek.com",
-    llm_model="deepseek-chat"
-)
-```
-
-### 运行分析
-
-1. 在`main.py`中设置要分析的股票代码：
-```python
-stock_info = {
-    '股票名称': '股票代码',  # 例如 '上证指数': 'sh000001'
-}
-```
-
-2. 运行主程序：
-```bash
-python main.py
-```
-
-3. 分析报告将自动生成并保存在`public/index.html`路径下
+轻量化教学
+内置技术面速成卡片，边看诊断边学习。
 
 ## 技术架构
 
-- 数据获取：使用Ashare模块获取A股历史数据
-- 技术分析：使用MyTT库进行技术指标计算
-- 图表生成：使用Matplotlib生成技术分析图表
-- AI分析：通过Deepseek API获取专业的投资建议
-- 报告生成：生成包含详细分析的HTML报告
+前端：Vue 3 + Tailwind CSS + ECharts
 
-## 输出示例
+后端：FastAPI + Uvicorn
 
-生成的分析报告包含以下内容：
+数据获取：akshare + Ashare（腾讯/新浪财经）
 
-1. 基础技术分析（收盘价、涨跌幅、成交量等）
-2. 技术指标详情（各项指标的最新值）
-3. 技术指标图表（多维度的股票走势分析图）
-4. 人工智能分析报告（基于历史数据的专业分析和投资建议）
+指标计算：MyTT（原项目）+ 部分 TA-Lib
 
-## 重要说明
+AI 模型：兼容 OpenAI 接口的多模态 LLM（如 GPT-5.6-Luna、DeepSeek 等）
 
-- **安全提示**：该项目是由个人自用的私有仓库公开而来，API凭据的存储并未做特别的安全防范措施。请务必妥善保管你的API密钥，建议使用环境变量或配置文件来存储敏感信息。
 
-- **输出位置**：分析结果会输出到根目录下的`public`文件夹中。如果文件夹不存在，程序会自动创建。
+## 使用方法
 
-- **免责声明**：本工具仅供学习和研究使用，不构成任何投资建议。投资有风险，入市需谨慎。用户应对自己的投资决策负责。
+环境要求：
+Python 3.9 及以上版本，pip。
 
-## 后续开发计划
+克隆项目：
+git clone https://github.com/你的用户名/stock-ai-analyst.git
+cd stock-ai-analyst
 
-- 添加更多技术指标和分析维度
-- 支持批量分析多只股票
-- 提供更丰富的可视化选项
-- 增加历史数据对比和回测功能
-- 优化AI分析模型和提示词设计
+安装依赖（推荐使用虚拟环境）：
+python -m venv venv
+source venv/bin/activate（Windows 为 venv\Scripts\activate）
+pip install -r requirements.txt
+
+配置环境变量：
+在项目根目录创建 .env 文件，填入 LLM API 信息：
+LLM_API_KEY=你的API密钥
+LLM_BASE_URL=https://api.deepseek.com（或你的服务商地址）
+LLM_MODEL=deepseek-chat（或 gpt-5.6-luna 等）
+
+启动后端服务：
+python api.py
+服务运行在 http://127.0.0.1:8000
+Swagger 文档：http://127.0.0.1:8000/docs
+
+打开前端页面：
+直接用浏览器打开 frontend/input.html 即可使用。
+前端完全静态，无需构建工具，也可部署到任何静态托管服务。
+
+## 项目结构
+
+项目根目录包含以下主要内容：
+
+frontend 文件夹：存放前端静态页面，包括 input.html（输入界面）和 result.html（诊断结果界面，含 K 线图）
+
+public 文件夹：原项目生成的旧报告，可忽略
+
+Ashare.py：数据获取模块（腾讯/新浪财经接口）
+
+MyTT.py：技术指标计算库（原项目）
+
+llm.py：LLM 客户端封装（改造增强版）
+
+main.py：核心分析引擎（改造版）
+
+api.py：FastAPI 服务入口（新增）
+
+models.py：Pydantic 数据模型（新增）
+
+requirements.txt：Python 依赖列表
+
+.env.example：环境变量模板
+
+README.md：项目说明文档
+
+## 注意事项
+
+API 密钥安全：切勿将 .env 文件上传到公开仓库。
+
+数据源：依赖 akshare 和财经网站接口，请保持网络畅通。
+
+大模型能力：若使用图片识别，需确保 LLM 支持多模态（如 gpt-5.6-luna）。
+
+免责声明：本工具仅作为学习研究，不构成任何投资建议，盈亏自负。
+
+## 贡献与鸣谢
+
+本项目基于 Ashare-LLM-Analyst 深度开发，感谢原作者的开源贡献。
+
+其余部分由Rinow个人完成
+
+欢迎提交 Issue 和 Pull Request。
 
 ## 许可证
 
 [MIT License](LICENSE)
-
-## 赞助
-
-<a href="https://edgeone.ai/?from=github">
-<img src="https://edgeone.ai/media/34fe3a45-492d-4ea4-ae5d-ea1087ca7b4b.png" alt="Tencent EdgeOne" width="200">
-</a>
-
-CDN acceleration and security protection for this project are sponsored by Tencent EdgeOne.
-
